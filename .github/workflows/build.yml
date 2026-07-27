@@ -15,13 +15,13 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Looks at the repo root and treats any top-level folder that directly
-  # contains a CMakeLists.txt as a Zephyr app (this matches folders like
-  # default/, gpio_toggle/, neopixel/ — no "apps/" wrapper folder
-  # required). Non-app folders like .github/ or tools/ are skipped
-  # automatically since they don't have a CMakeLists.txt at that depth.
-  # Add a new app by dropping a new top-level folder with a
-  # CMakeLists.txt + src/ — you never need to touch this workflow file.
+  # Treats any folder in the repo that directly contains a CMakeLists.txt
+  # as a Zephyr app — works whether apps live flat at the repo root
+  # (default/, gpio_toggle/) or nested one level deeper (apps/blinky/).
+  # Non-app folders like .github/ or tools/ are skipped automatically
+  # since they don't have a CMakeLists.txt. Add a new app anywhere in
+  # the repo with a CMakeLists.txt + source — you never need to touch
+  # this workflow file.
   # ------------------------------------------------------------------
   discover:
     runs-on: ubuntu-latest
@@ -31,14 +31,29 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Build app list from top-level folders with a CMakeLists.txt
+      - name: Build app list (any folder containing a CMakeLists.txt)
         id: set-matrix
         run: |
-          apps=$(find . -mindepth 2 -maxdepth 2 -name CMakeLists.txt -printf '%h\n' \
-                 | sed 's|^\./||' | sort)
+          echo "Top-level folders in repo:"
+          find . -mindepth 1 -maxdepth 1 -type d -printf '  %f\n'
+
+          # Matches a CMakeLists.txt at any depth >= 2, so it finds both
+          # a flat top-level app (default/CMakeLists.txt) and a nested
+          # one (apps/blinky/CMakeLists.txt). tools/ is excluded since
+          # it's scripts, not an app.
+          apps=$(find . -mindepth 2 -name CMakeLists.txt \
+                 -not -path "./tools/*" \
+                 -printf '%h\n' | sed 's|^\./||' | sort -u)
+
+          if [ -z "$apps" ]; then
+            echo "::error::No app folders found — no directory in the repo has a CMakeLists.txt in it. Run 'git ls-files | grep CMakeLists.txt' locally to check what's actually committed and pushed."
+            exit 1
+          fi
+
           json=$(printf '%s\n' "$apps" | jq -R . | jq -sc '{app: .}')
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
-          echo "Discovered apps: $apps"
+          echo "Discovered apps:"
+          printf '%s\n' "$apps" | sed 's/^/  /'
 
   build:
     needs: discover
@@ -52,8 +67,12 @@ jobs:
         with:
           fetch-depth: 0
         # Source for this build lives at $GITHUB_WORKSPACE/${{ matrix.app }}
-        # (a top-level folder, e.g. default/, gpio_toggle/, neopixel/).
+        # (e.g. default/, or apps/blinky/ if nested one level deeper).
         # Patches (applied to Zephyr itself, if any) live under patches/*.patch
+
+      - name: Compute safe app slug (matrix.app with "/" replaced by "-")
+        id: slug
+        run: echo "value=$(echo '${{ matrix.app }}' | tr '/ ' '--')" >> "$GITHUB_OUTPUT"
 
       - name: Install system build dependencies
         run: |
@@ -116,14 +135,14 @@ jobs:
           ZEPHYR_TOOLCHAIN_VARIANT: zephyr
         run: |
           cd zephyrproject
-          west build -b ${{ env.BOARD }} "${{ github.workspace }}/${{ matrix.app }}" -d build_${{ matrix.app }}
+          west build -b ${{ env.BOARD }} "${{ github.workspace }}/${{ matrix.app }}" -d build_${{ steps.slug.outputs.value }}
 
       - name: Generate plain-text hex dump
         run: |
           python3 - <<EOF
-          with open('zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin', 'rb') as f:
+          with open('zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.bin', 'rb') as f:
               data = f.read()
-          with open('zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt', 'w') as out:
+          with open('zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.txt', 'w') as out:
               for i in range(0, len(data), 16):
                   chunk = data[i:i+16]
                   hexpart = ' '.join(f'{b:02x}' for b in chunk)
@@ -132,12 +151,18 @@ jobs:
           EOF
 
       - name: Collect readable source for the release
-        # Lets someone SEE the code for this app (its own src/), plus any
-        # patches that were applied to Zephyr itself, instead of only
-        # getting the compiled .bin/.hex/.elf.
+        # Lets someone SEE the code for this app, plus any patches that
+        # were applied to Zephyr itself, instead of only getting the
+        # compiled .bin/.hex/.elf. Handles both layouts: source in a
+        # src/ subfolder, or .c files directly in the app folder.
         run: |
-          mkdir -p release-src
-          cp -r "${{ matrix.app }}/src" release-src/app-src
+          mkdir -p release-src/app-src
+          if [ -d "${{ matrix.app }}/src" ]; then
+            cp -r "${{ matrix.app }}/src/." release-src/app-src/
+          else
+            cp "${{ matrix.app }}"/*.c release-src/app-src/ 2>/dev/null || true
+            cp "${{ matrix.app }}"/*.h release-src/app-src/ 2>/dev/null || true
+          fi
           cp "${{ matrix.app }}/CMakeLists.txt" release-src/ 2>/dev/null || true
           cp "${{ matrix.app }}/prj.conf" release-src/ 2>/dev/null || true
           mkdir -p release-src/patches
@@ -146,12 +171,12 @@ jobs:
       - name: Upload build artifacts (workflow run)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.app }}-beagleconnect_zepto
+          name: ${{ steps.slug.outputs.value }}-beagleconnect_zepto
           path: |
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.hex
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.elf
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.bin
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.hex
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.txt
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.elf
             release-src/
           if-no-files-found: error
 
@@ -161,7 +186,7 @@ jobs:
       - name: Compute release tag
         if: github.event_name != 'pull_request'
         id: tag
-        run: echo "name=${{ matrix.app }}-zepto-v0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+        run: echo "name=${{ steps.slug.outputs.value }}-zepto-v0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Create tag + release with firmware and source
         if: github.event_name != 'pull_request'
@@ -177,13 +202,13 @@ jobs:
             - `zephyr.bin` / `zephyr.hex` / `zephyr.elf` — flashable firmware
             - `zephyr.txt` — plain-text hex dump of the binary
             - `app-src/` — the actual app source that was built (edit
-              `${{ matrix.app }}/src/` in the repo to change it)
+              `${{ matrix.app }}/` in the repo to change it)
             - `patches/` — any local Zephyr patches applied for this build
 
             Built from commit ${{ github.sha }}.
           files: |
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.hex
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt
-            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.elf
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.bin
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.hex
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.txt
+            zephyrproject/build_${{ steps.slug.outputs.value }}/zephyr/zephyr.elf
             release-src/**

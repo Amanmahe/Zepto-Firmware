@@ -85,24 +85,24 @@ jobs:
           mkdir -p zephyr-sdk-${ZEPHYR_SDK_VERSION}/gnu/arm-zephyr-eabi
           tar xf arm-toolchain.tar.xz -C zephyr-sdk-${ZEPHYR_SDK_VERSION}/gnu/arm-zephyr-eabi --strip-components=1
 
-      # --- Known upstream issue (as of mid-2026) ---
-      # zephyr/drivers/gpio/gpio_mspm0.c has an IOMUX pin table for
-      # MSPM0L1117 that references IOMUX_PINCM macros that don't exist
-      # in the current hal_ti header for this chip, so beagleconnect_zepto
-      # fails to build on stock `main` until this is fixed upstream.
-      # Re-check https://github.com/zephyrproject-rtos/zephyr for a fix and
-      # remove the patch from patches/ once it lands.
-      #
-      # Every *.patch in patches/ is applied automatically, in name order —
-      # this is why patches are numbered (0001-, 0002-, ...). Add more
-      # patches later without touching this workflow.
+      # patches/ is currently empty (the MSPM0L1117 GPIO pin-table issue
+      # that used to live here was fixed upstream in Zephyr `main` as of
+      # late July 2026). This step is generic and safe either way: it
+      # applies every *.patch file found in patches/, in name order
+      # (0001-, 0002-, ...), and does nothing if the folder is empty.
+      # Drop a new patch here later without touching this workflow.
       - name: Apply local Zephyr patches (patches/*.patch)
         run: |
           shopt -s nullglob
-          for p in "${{ github.workspace }}"/patches/*.patch; do
-            echo "Applying $p"
-            (cd zephyrproject/zephyr && git apply --check "$p" && git apply "$p")
-          done
+          patches=("${{ github.workspace }}"/patches/*.patch)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "No patches found in patches/, skipping."
+          else
+            for p in "${patches[@]}"; do
+              echo "Applying $p"
+              (cd zephyrproject/zephyr && git apply --check "$p" && git apply "$p")
+            done
+          fi
 
       - name: Build ${{ matrix.app }}
         env:

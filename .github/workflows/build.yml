@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Looks at apps/ and builds a matrix out of whatever folders are
-  # there. Add a new app by dropping a folder in apps/<name>/ with a
+  # Looks at the repo root and treats any top-level folder that directly
+  # contains a CMakeLists.txt as a Zephyr app (this matches folders like
+  # default/, gpio_toggle/, neopixel/ — no "apps/" wrapper folder
+  # required). Non-app folders like .github/ or tools/ are skipped
+  # automatically since they don't have a CMakeLists.txt at that depth.
+  # Add a new app by dropping a new top-level folder with a
   # CMakeLists.txt + src/ — you never need to touch this workflow file.
   # ------------------------------------------------------------------
   discover:
@@ -27,10 +31,11 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Build app list from apps/*
+      - name: Build app list from top-level folders with a CMakeLists.txt
         id: set-matrix
         run: |
-          apps=$(find apps -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          apps=$(find . -mindepth 2 -maxdepth 2 -name CMakeLists.txt -printf '%h\n' \
+                 | sed 's|^\./||' | sort)
           json=$(printf '%s\n' "$apps" | jq -R . | jq -sc '{app: .}')
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
           echo "Discovered apps: $apps"
@@ -46,7 +51,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-        # Source for this build lives at $GITHUB_WORKSPACE/apps/${{ matrix.app }}
+        # Source for this build lives at $GITHUB_WORKSPACE/${{ matrix.app }}
+        # (a top-level folder, e.g. default/, gpio_toggle/, neopixel/).
         # Patches (applied to Zephyr itself, if any) live under patches/*.patch
 
       - name: Install system build dependencies
@@ -110,7 +116,7 @@ jobs:
           ZEPHYR_TOOLCHAIN_VARIANT: zephyr
         run: |
           cd zephyrproject
-          west build -b ${{ env.BOARD }} "${{ github.workspace }}/apps/${{ matrix.app }}" -d build_${{ matrix.app }}
+          west build -b ${{ env.BOARD }} "${{ github.workspace }}/${{ matrix.app }}" -d build_${{ matrix.app }}
 
       - name: Generate plain-text hex dump
         run: |
@@ -131,9 +137,9 @@ jobs:
         # getting the compiled .bin/.hex/.elf.
         run: |
           mkdir -p release-src
-          cp -r "apps/${{ matrix.app }}/src" release-src/app-src
-          cp "apps/${{ matrix.app }}/CMakeLists.txt" release-src/ 2>/dev/null || true
-          cp "apps/${{ matrix.app }}/prj.conf" release-src/ 2>/dev/null || true
+          cp -r "${{ matrix.app }}/src" release-src/app-src
+          cp "${{ matrix.app }}/CMakeLists.txt" release-src/ 2>/dev/null || true
+          cp "${{ matrix.app }}/prj.conf" release-src/ 2>/dev/null || true
           mkdir -p release-src/patches
           cp patches/*.patch release-src/patches/ 2>/dev/null || true
 
@@ -171,7 +177,7 @@ jobs:
             - `zephyr.bin` / `zephyr.hex` / `zephyr.elf` — flashable firmware
             - `zephyr.txt` — plain-text hex dump of the binary
             - `app-src/` — the actual app source that was built (edit
-              `apps/${{ matrix.app }}/src/` in the repo to change it)
+              `${{ matrix.app }}/src/` in the repo to change it)
             - `patches/` — any local Zephyr patches applied for this build
 
             Built from commit ${{ github.sha }}.

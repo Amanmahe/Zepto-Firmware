@@ -1,0 +1,183 @@
+name: Build Zephyr apps for BeagleConnect Zepto
+
+# Trigger: on every push/PR, and manually via the Actions tab ("Run workflow")
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  ZEPHYR_SDK_VERSION: "1.0.1"
+  BOARD: "beagleconnect_zepto/mspm0l1117"
+
+permissions:
+  contents: write   # needed so the workflow can create tags/releases
+
+jobs:
+  # ------------------------------------------------------------------
+  # Looks at apps/ and builds a matrix out of whatever folders are
+  # there. Add a new app by dropping a folder in apps/<name>/ with a
+  # CMakeLists.txt + src/ — you never need to touch this workflow file.
+  # ------------------------------------------------------------------
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Build app list from apps/*
+        id: set-matrix
+        run: |
+          apps=$(find apps -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          json=$(printf '%s\n' "$apps" | jq -R . | jq -sc '{app: .}')
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "Discovered apps: $apps"
+
+  build:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        # Source for this build lives at $GITHUB_WORKSPACE/apps/${{ matrix.app }}
+        # Patches (applied to Zephyr itself, if any) live under patches/*.patch
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build device-tree-compiler gperf ccache \
+            dfu-util file wget xz-utils
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install west
+        run: pip install west
+
+      - name: Initialize Zephyr workspace (shallow)
+        run: |
+          west init --mr main -o=--depth=1 --mf west.yml zephyrproject
+          cd zephyrproject
+          # Only pull the modules this board target actually needs
+          west update --narrow -o=--depth=1 hal_ti cmsis cmsis_6
+
+      - name: Install Zephyr Python requirements
+        run: pip install -r zephyrproject/zephyr/scripts/requirements.txt
+
+      - name: Download Zephyr SDK (minimal bundle + arm-zephyr-eabi toolchain only)
+        run: |
+          cd ${{ github.workspace }}
+          wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" -O sdk-minimal.tar.xz
+          mkdir -p zephyr-sdk-${ZEPHYR_SDK_VERSION}
+          tar xf sdk-minimal.tar.xz -C ${{ github.workspace }}
+
+          wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz" -O arm-toolchain.tar.xz
+          mkdir -p zephyr-sdk-${ZEPHYR_SDK_VERSION}/gnu/arm-zephyr-eabi
+          tar xf arm-toolchain.tar.xz -C zephyr-sdk-${ZEPHYR_SDK_VERSION}/gnu/arm-zephyr-eabi --strip-components=1
+
+      # --- Known upstream issue (as of mid-2026) ---
+      # zephyr/drivers/gpio/gpio_mspm0.c has an IOMUX pin table for
+      # MSPM0L1117 that references IOMUX_PINCM macros that don't exist
+      # in the current hal_ti header for this chip, so beagleconnect_zepto
+      # fails to build on stock `main` until this is fixed upstream.
+      # Re-check https://github.com/zephyrproject-rtos/zephyr for a fix and
+      # remove the patch from patches/ once it lands.
+      #
+      # Every *.patch in patches/ is applied automatically, in name order —
+      # this is why patches are numbered (0001-, 0002-, ...). Add more
+      # patches later without touching this workflow.
+      - name: Apply local Zephyr patches (patches/*.patch)
+        run: |
+          shopt -s nullglob
+          for p in "${{ github.workspace }}"/patches/*.patch; do
+            echo "Applying $p"
+            (cd zephyrproject/zephyr && git apply --check "$p" && git apply "$p")
+          done
+
+      - name: Build ${{ matrix.app }}
+        env:
+          ZEPHYR_SDK_INSTALL_DIR: ${{ github.workspace }}/zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}
+          ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+        run: |
+          cd zephyrproject
+          west build -b ${{ env.BOARD }} "${{ github.workspace }}/apps/${{ matrix.app }}" -d build_${{ matrix.app }}
+
+      - name: Generate plain-text hex dump
+        run: |
+          python3 - <<EOF
+          with open('zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin', 'rb') as f:
+              data = f.read()
+          with open('zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt', 'w') as out:
+              for i in range(0, len(data), 16):
+                  chunk = data[i:i+16]
+                  hexpart = ' '.join(f'{b:02x}' for b in chunk)
+                  ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+                  out.write(f'{i:08x}  {hexpart:<47}  {ascii_part}\n')
+          EOF
+
+      - name: Collect readable source for the release
+        # Lets someone SEE the code for this app (its own src/), plus any
+        # patches that were applied to Zephyr itself, instead of only
+        # getting the compiled .bin/.hex/.elf.
+        run: |
+          mkdir -p release-src
+          cp -r "apps/${{ matrix.app }}/src" release-src/app-src
+          cp "apps/${{ matrix.app }}/CMakeLists.txt" release-src/ 2>/dev/null || true
+          cp "apps/${{ matrix.app }}/prj.conf" release-src/ 2>/dev/null || true
+          mkdir -p release-src/patches
+          cp patches/*.patch release-src/patches/ 2>/dev/null || true
+
+      - name: Upload build artifacts (workflow run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-beagleconnect_zepto
+          path: |
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.hex
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.elf
+            release-src/
+          if-no-files-found: error
+
+      # --- Tag + GitHub Release, one per app per run ---
+      # Only on push to a branch / manual runs — not on pull_request builds,
+      # since PRs from forks can't push tags/releases.
+      - name: Compute release tag
+        if: github.event_name != 'pull_request'
+        id: tag
+        run: echo "name=${{ matrix.app }}-zepto-v0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag + release with firmware and source
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "${{ matrix.app }} @ ${{ env.BOARD }} — build ${{ github.run_number }}"
+          body: |
+            Automated build of `${{ matrix.app }}` for `${{ env.BOARD }}`
+            (BeagleConnect Zepto).
+
+            Includes:
+            - `zephyr.bin` / `zephyr.hex` / `zephyr.elf` — flashable firmware
+            - `zephyr.txt` — plain-text hex dump of the binary
+            - `app-src/` — the actual app source that was built (edit
+              `apps/${{ matrix.app }}/src/` in the repo to change it)
+            - `patches/` — any local Zephyr patches applied for this build
+
+            Built from commit ${{ github.sha }}.
+          files: |
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.bin
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.hex
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.txt
+            zephyrproject/build_${{ matrix.app }}/zephyr/zephyr.elf
+            release-src/**

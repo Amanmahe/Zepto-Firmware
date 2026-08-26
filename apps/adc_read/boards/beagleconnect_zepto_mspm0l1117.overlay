@@ -1,0 +1,65 @@
+/*
+ * !!! TEMPLATE -- PIN/CHANNEL NUMBERS NOT VERIFIED !!!
+ *
+ * adc0 exists on the mspm0l1117 SoC (dts/arm/ti/mspm0/l/mspm0l.dtsi)
+ * and the driver is in the Zephyr tree (drivers/adc/adc_mspm0_adc12.c),
+ * but it's disabled by default on this board and needs both a pin
+ * and a matching ADC channel number filled in.
+ *
+ * Steps to fill this in for real:
+ *   1. Pick an analog-capable pad on the Zepto header (schematic at
+ *      github.com/beagleboard/beagleconnect-zepto).
+ *   2. Find that pin's PINCM number and confirm it has an "analog"
+ *      alternate function (MSPM0_PIN_FUNCTION_ANALOG) in the
+ *      MSPM0L1117 datasheet pinmux table.
+ *   3. Find which ADC0 channel number that same pin maps to (also in
+ *      the datasheet) and use it in both the pinctrl node name/comment
+ *      and io-channels below.
+ *
+ * ti,clk-range / ti,clk-divider / max-result-reg values below are
+ * copied from typical L-series settings; double check against
+ * dts/bindings/adc/ti,mspm0-adc12.yaml if your reading looks off.
+ */
+
+#include <dt-bindings/pinctrl/mspm0-pinctrl.h>
+
+/ {
+	zephyr,user {
+		/* TODO: replace 0 with your real ADC0 channel number */
+		io-channels = <&adc0 0>;
+	};
+};
+
+&pinctrl {
+	status = "okay";
+
+	adc0_chan0: adc0_chan0 {
+		/* TODO: replace with the real PINCM for your chosen analog pad */
+		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_ANALOG)>; /* FIXME */
+	};
+};
+
+&vref0 {
+	status = "okay";
+};
+
+&adc0 {
+	status = "okay";
+	pinctrl-0 = <&adc0_chan0>;
+	pinctrl-names = "default";
+
+	ti,clk-range = <0>;
+	ti,clk-divider = <1>;
+	max-result-reg = <4>;
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
+	};
+};

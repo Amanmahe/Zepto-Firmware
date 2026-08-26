@@ -1,0 +1,58 @@
+/*
+ * !!! TEMPLATE -- PIN NUMBERS NOT VERIFIED !!!
+ *
+ * spi0 exists on the mspm0l1117 SoC (dts/arm/ti/mspm0/mspm0.dtsi) and
+ * the driver is in the Zephyr tree (drivers/spi/spi_mspm0.c), but
+ * it's disabled by default on this board and needs 3 pins (SCLK,
+ * PICO/MOSI, POCI/MISO) plus a chip-select GPIO filled in.
+ *
+ * Steps to fill this in for real:
+ *   1. Pick 4 pads on the Zepto header for SCLK/PICO/POCI/CS
+ *      (schematic at github.com/beagleboard/beagleconnect-zepto --
+ *      the mikroBUS SPI pins are a natural choice if broken out).
+ *   2. Find each pin's PINCM number and its SPI alternate function
+ *      index in the MSPM0L1117 datasheet pinmux table.
+ *   3. Replace the three pinmux lines and the cs-gpios pin number
+ *      below.
+ *
+ * Once wired, this app's loopback test only proves the SPI block
+ * itself works -- jumper PICO to POCI directly on the header for a
+ * true loopback, or swap in a real SPI device (e.g. a Click board on
+ * the mikroBUS SPI slot) and drop the loopback assumption in main.c.
+ */
+
+#include <dt-bindings/pinctrl/mspm0-pinctrl.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+&pinctrl {
+	status = "okay";
+
+	spi0_sclk: spi0_sclk {
+		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real SCLK pin */
+	};
+
+	spi0_pico: spi0_pico {
+		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real PICO/MOSI pin */
+	};
+
+	spi0_poci: spi0_poci {
+		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real POCI/MISO pin */
+		input-enable;
+	};
+};
+
+&gpiob {
+	status = "okay";
+};
+
+&spi0 {
+	status = "okay";
+	pinctrl-0 = <&spi0_sclk &spi0_pico &spi0_poci>;
+	pinctrl-names = "default";
+
+	/* FIXME: real GPIO for chip-select */
+	cs-gpios = <&gpiob 0 GPIO_ACTIVE_LOW>;
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+};

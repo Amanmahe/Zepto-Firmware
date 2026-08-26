@@ -1,0 +1,74 @@
+/*
+ * !!! TEMPLATE -- PIN NUMBERS NOT VERIFIED !!!
+ *
+ * The mspm0l1117 SoC and the pwm_mspm0 driver both support this
+ * (see dts/bindings/pwm/ti,mspm0-timer-pwm.yaml and
+ * drivers/pwm/pwm_mspm0.c in the Zephyr tree), but the Zepto board
+ * file does not wire up a PWM output by default, so you must add it.
+ *
+ * <pincm> below is a MSPM0L1117 pin-control-mux number (PINCM), NOT a
+ * GPIO/port pin number. Every physical pin on the QFN32 package maps
+ * to one PINCM, and each PINCM supports several alternate functions
+ * (GPIO, UART, PWM/timer capture-compare, SPI, ADC, ...) -- exactly
+ * like the uart0_tx/uart0_rx example already in
+ * boards/beagle/beagleconnect_zepto/beagleconnect_zepto.dts.
+ *
+ * To fill in real numbers:
+ *   1. Pick a Zepto pad (mikroBUS or Qwiic header pin) from the
+ *      board's schematic/silkscreen (github.com/beagleboard/beagleconnect-zepto).
+ *   2. Look up which MCU ball/pin that pad is wired to.
+ *   3. Look up that pin's PINCM number and its PWM alternate function
+ *      index in the MSPM0L1117 datasheet pinmux table.
+ *   4. Replace PLACEHOLDER_PINCM and PLACEHOLDER_FUNCTION below.
+ *
+ * timg1 is used here (not timg0) because timg0 already backs the
+ * "counter" alias used by the counter_alarm example -- keeps this app
+ * independent of the others.
+ */
+
+#include <zephyr/dt-bindings/pwm/pwm.h>
+#include <dt-bindings/pinctrl/mspm0-pinctrl.h>
+
+/ {
+	aliases {
+		pwm-led0 = &pwm_led0;
+	};
+
+	pwm_leds {
+		compatible = "pwm-leds";
+
+		pwm_led0: pwm_led0 {
+			pwms = <&pwm1 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+	};
+};
+
+&pinctrl {
+	status = "okay";
+
+	pwm1_out0: pwm1_out0 {
+		/* TODO: replace with the real PINCM + function for your chosen pad.
+		 * This will NOT build until you do -- it's a template, not a
+		 * working value. Example shape (from blinky's uart0 overlay):
+		 * pinmux = <MSP_PINMUX(21, MSPM0_PIN_FUNCTION_2)>;
+		 */
+		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME */
+	};
+};
+
+&timg1 {
+	status = "okay";
+
+	pwm1: pwm1 {
+		compatible = "ti,mspm0-timer-pwm";
+		#pwm-cells = <3>;
+		status = "okay";
+
+		pinctrl-0 = <&pwm1_out0>;
+		pinctrl-names = "default";
+
+		ti,cc-index = <0>;
+		ti,pwm-mode = "EDGE_ALIGN";
+		ti,period = <1000>;
+	};
+};

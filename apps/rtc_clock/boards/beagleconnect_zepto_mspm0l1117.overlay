@@ -1,0 +1,16 @@
+/*
+ * The RTC block is on-chip and needs no external pins, but it isn't
+ * turned on in the base board devicetree, so flip it on here.
+ * (This overlay is picked up automatically by its filename -- it
+ * matches the exact board target beagleconnect_zepto/mspm0l1117.)
+ */
+
+/ {
+	aliases {
+		rtc = &rtc;
+	};
+};
+
+&rtc {
+	status = "okay";
+};

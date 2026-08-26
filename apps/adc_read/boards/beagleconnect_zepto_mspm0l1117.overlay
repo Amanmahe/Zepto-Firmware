@@ -23,6 +23,7 @@
 
 #include <dt-bindings/pinctrl/mspm0-pinctrl.h>
 #include <zephyr/dt-bindings/adc/adc.h>
+#include <zephyr/dt-bindings/clock/mspm0_clock.h>
 
 / {
 	zephyr,user {
@@ -52,6 +53,11 @@
 	ti,clk-range = <0>;
 	ti,clk-divider = <1>;
 	max-result-reg = <4>;
+
+	/* required by the ti,mspm0-adc12 binding -- ULPCLK is already
+	 * running (uart0 uses it too), so reuse it here.
+	 */
+	clocks = <&ckm MSPM0_CLOCK_ULPCLK>;
 
 	#address-cells = <1>;
 	#size-cells = <0>;

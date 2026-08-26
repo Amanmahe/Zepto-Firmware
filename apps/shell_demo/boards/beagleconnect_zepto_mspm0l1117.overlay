@@ -1,0 +1,12 @@
+/*
+ * The shell backend looks for the "zephyr,shell-uart" chosen node,
+ * which the base board devicetree doesn't set (it only sets
+ * "zephyr,console"). Point it at the same uart0 used for the console
+ * so the shell runs over the same debug UART.
+ */
+
+/ {
+	chosen {
+		zephyr,shell-uart = &uart0;
+	};
+};

@@ -23,6 +23,7 @@
 
 #include <dt-bindings/pinctrl/mspm0-pinctrl.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/clock/mspm0_clock.h>
 
 &pinctrl {
 	status = "okay";
@@ -52,6 +53,9 @@
 
 	/* FIXME: real GPIO for chip-select */
 	cs-gpios = <&gpiob 0 GPIO_ACTIVE_LOW>;
+
+	/* required by the ti,mspm0-spi binding */
+	clocks = <&ckm MSPM0_CLOCK_MCLK>;
 
 	#address-cells = <1>;
 	#size-cells = <0>;

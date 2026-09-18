@@ -9,6 +9,13 @@ on:
 env:
   ZEPHYR_SDK_VERSION: "1.0.1"
   BOARD: "beagleconnect_zepto/mspm0l1117"
+  # Pinned to a known-good commit on zephyrproject/zephyr's main branch
+  # (2026-08-26). Tracking "main" directly is NOT reproducible: it moves
+  # every day, and an upstream regression (e.g. clock/GPIO driver changes)
+  # can silently break boards between one CI run and the next even though
+  # nothing in this repo changed. Bump this only after confirming a newer
+  # commit still boots correctly on real hardware.
+  ZEPHYR_PIN_REVISION: "837578d95303a7582d11f5673d29d76c48336e3a"
 
 permissions:
   contents: write   # needed so the workflow can create tags/releases
@@ -93,9 +100,20 @@ jobs:
       - name: Install west
         run: pip install west
 
-      - name: Initialize Zephyr workspace (shallow)
+      - name: Initialize Zephyr workspace (shallow, pinned commit)
+        # "west init --mr <branch>" only accepts branch/tag names, not raw
+        # commit SHAs (git clone --branch rejects them), so to pin to an
+        # exact commit we shallow-fetch it ourselves and hand the already
+        # cloned repo to "west init -l" instead of letting west clone it.
         run: |
-          west init --mr main -o=--depth=1 --mf west.yml zephyrproject
+          mkdir -p zephyrproject/zephyr
+          cd zephyrproject/zephyr
+          git init -q
+          git remote add origin https://github.com/zephyrproject-rtos/zephyr.git
+          git fetch --depth 1 origin "$ZEPHYR_PIN_REVISION"
+          git checkout -q FETCH_HEAD
+          cd ../..
+          west init -l zephyrproject/zephyr
           cd zephyrproject
           # Only pull the modules this board target actually needs
           west update --narrow -o=--depth=1 hal_ti cmsis cmsis_6

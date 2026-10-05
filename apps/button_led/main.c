@@ -38,6 +38,8 @@ int main(void)
 {
 	int ret;
 
+	printk("button_led: starting\n");
+
 	if (!gpio_is_ready_dt(&led) || !gpio_is_ready_dt(&button)) {
 		printk("LED or button device not ready\n");
 		return 0;
@@ -45,16 +47,19 @@ int main(void)
 
 	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
 	if (ret < 0) {
+		printk("LED configure failed: %d\n", ret);
 		return 0;
 	}
 
 	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
 	if (ret < 0) {
+		printk("Button configure failed: %d\n", ret);
 		return 0;
 	}
 
 	ret = gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE);
 	if (ret < 0) {
+		printk("Button interrupt configure failed: %d\n", ret);
 		return 0;
 	}
 

@@ -19,6 +19,8 @@ static const struct device *const entropy_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_e
 
 int main(void)
 {
+	printk("entropy_rng: starting\n");
+
 	if (!device_is_ready(entropy_dev)) {
 		printk("Entropy device not ready\n");
 		return 0;

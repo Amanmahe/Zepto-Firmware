@@ -4,14 +4,16 @@
  * Blinks led0 once every 2 seconds. The interesting part isn't the
  * blink -- it's CONFIG_PM=y in prj.conf: whenever this app calls
  * k_msleep() and the CPU is otherwise idle, Zephyr's power management
- * subsystem automatically drops the SoC into one of the low-power
- * run/stop/standby states declared for this chip family (see
- * dts/arm/ti/mspm0/l/mspm0l.dtsi), instead of just spinning in the
- * default idle loop. No application code changes needed to benefit
- * from it -- compare current draw with CONFIG_PM=n to see the effect
- * on a multimeter.
+ * subsystem automatically clock-gates the CPU core via WFI instead of
+ * spinning in the default idle loop. No application code changes
+ * needed to benefit from it -- compare current draw with CONFIG_PM=n
+ * to see the effect on a multimeter.
  *
- * No overlay needed.
+ * The board overlay disables the deeper STOP/STANDBY power states:
+ * this SoC's Zephyr port has no wake-capable timer yet, and those
+ * states gate the clock that also feeds the kernel's own tick source,
+ * so entering them means the board never wakes back up. Only the
+ * RUN-sleep states (which leave that clock running) are safe for now.
  */
 
 #include <zephyr/kernel.h>

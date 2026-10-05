@@ -45,6 +45,8 @@ int main(void)
 	int err;
 	uint32_t freq;
 
+	printk("counter_alarm: starting\n");
+
 	if (!device_is_ready(counter_dev)) {
 		printk("Counter device not ready\n");
 		return 0;

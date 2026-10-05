@@ -46,6 +46,8 @@ SHELL_CMD_REGISTER(led, &sub_led, "LED control commands", NULL);
 
 int main(void)
 {
+	printk("shell_demo: starting\n");
+
 	if (gpio_is_ready_dt(&led)) {
 		gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
 	}

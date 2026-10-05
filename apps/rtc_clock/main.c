@@ -30,6 +30,8 @@ int main(void)
 		.tm_sec  = 0,
 	};
 
+	printk("rtc_clock: starting\n");
+
 	if (!device_is_ready(rtc_dev)) {
 		printk("RTC device not ready\n");
 		return 0;

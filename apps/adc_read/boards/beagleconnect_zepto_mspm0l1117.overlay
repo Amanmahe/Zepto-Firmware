@@ -36,8 +36,15 @@
 	status = "okay";
 
 	adc0_chan0: adc0_chan0 {
-		/* TODO: replace with the real PINCM for your chosen analog pad */
-		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_ANALOG)>; /* FIXME */
+		/* TODO: replace with the real PINCM for your chosen analog pad.
+		 *
+		 * Placeholder pin is 1, not 0: MSP_PINMUX() computes
+		 * (pincm - 1), so a PINCM of 0 underflows and the pinctrl
+		 * driver writes to an IOMUX register far outside its valid
+		 * range, hard-faulting the board at boot. PINCM 1 is a real,
+		 * unused pin, so it's a safe no-op until filled in for real.
+		 */
+		pinmux = <MSP_PINMUX(1, MSPM0_PIN_FUNCTION_ANALOG)>; /* FIXME */
 	};
 };
 

@@ -1,19 +1,16 @@
 /*
  * low_power_sleep for BeagleConnect Zepto (mspm0l1117)
  *
- * Blinks led0 once every 2 seconds. The interesting part isn't the
- * blink -- it's CONFIG_PM=y in prj.conf: whenever this app calls
- * k_msleep() and the CPU is otherwise idle, Zephyr's power management
- * subsystem automatically clock-gates the CPU core via WFI instead of
- * spinning in the default idle loop. No application code changes
- * needed to benefit from it -- compare current draw with CONFIG_PM=n
- * to see the effect on a multimeter.
+ * Plain led0 blink, once every 2 seconds.
  *
- * The board overlay disables the deeper STOP/STANDBY power states:
- * this SoC's Zephyr port has no wake-capable timer yet, and those
- * states gate the clock that also feeds the kernel's own tick source,
- * so entering them means the board never wakes back up. Only the
- * RUN-sleep states (which leave that clock running) are safe for now.
+ * This app originally also set CONFIG_PM=y to let Zephyr's power
+ * management subsystem drop the SoC into a low-power state whenever
+ * idle. That hangs the board at boot on real hardware, at the Zephyr
+ * revision this repo is pinned to -- confirmed on-device (the LED
+ * never toggles even once). None of the mspm0 drivers implement
+ * device PM actions either, so there would be no benefit even if the
+ * hang were fixed. Removed until upstream Zephyr's mspm0 PM support
+ * is further along -- see prj.conf.
  */
 
 #include <zephyr/kernel.h>

@@ -48,11 +48,17 @@
 
 	pwm1_out0: pwm1_out0 {
 		/* TODO: replace with the real PINCM + function for your chosen pad.
-		 * This will NOT build until you do -- it's a template, not a
-		 * working value. Example shape (from blinky's uart0 overlay):
-		 * pinmux = <MSP_PINMUX(21, MSPM0_PIN_FUNCTION_2)>;
+		 * This will NOT fade anything until you do -- it's a template,
+		 * not a working value. Example shape (from blinky's uart0
+		 * overlay): pinmux = <MSP_PINMUX(21, MSPM0_PIN_FUNCTION_2)>;
+		 *
+		 * Placeholder pin is 1, not 0: MSP_PINMUX() computes
+		 * (pincm - 1), so a PINCM of 0 underflows and the pinctrl
+		 * driver writes to an IOMUX register far outside its valid
+		 * range, hard-faulting the board at boot. PINCM 1 is a real,
+		 * unused pin, so it's a safe no-op until filled in for real.
 		 */
-		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME */
+		pinmux = <MSP_PINMUX(1, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME */
 	};
 };
 

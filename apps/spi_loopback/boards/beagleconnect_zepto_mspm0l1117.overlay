@@ -28,16 +28,24 @@
 &pinctrl {
 	status = "okay";
 
+	/*
+	 * Placeholder pin is 1, not 0: MSP_PINMUX() computes (pincm - 1),
+	 * so a PINCM of 0 underflows to 0xFFFF0000 and the pinctrl driver
+	 * writes to an IOMUX register far outside its valid range --
+	 * this hard-faults the board at boot, before the console even
+	 * comes up. PINCM 1 is a real, unused pin, so it's a safe no-op
+	 * until you fill in the actual SCLK/PICO/POCI pins below.
+	 */
 	spi0_sclk: spi0_sclk {
-		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real SCLK pin */
+		pinmux = <MSP_PINMUX(1, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real SCLK pin */
 	};
 
 	spi0_pico: spi0_pico {
-		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real PICO/MOSI pin */
+		pinmux = <MSP_PINMUX(1, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real PICO/MOSI pin */
 	};
 
 	spi0_poci: spi0_poci {
-		pinmux = <MSP_PINMUX(0, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real POCI/MISO pin */
+		pinmux = <MSP_PINMUX(1, MSPM0_PIN_FUNCTION_GPIO)>; /* FIXME: real POCI/MISO pin */
 		input-enable;
 	};
 };
